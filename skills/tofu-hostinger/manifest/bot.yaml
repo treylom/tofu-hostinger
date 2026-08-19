@@ -1,0 +1,103 @@
+route: bot
+steps:
+  - id: b1
+    title: 디스코드 봇 토큰 저장 — .env + 권한 잠금(chmod 600)
+    action: |
+      (브라우저) discord.com/developers/applications 접속 → New Application → 봇 이름 입력. 왼쪽 Bot 탭에서 봇 생성을 확인한다. Reset Token 버튼으로 토큰을 발급받는다(2단계 인증 코드(6자리)를 묻는 창이 뜰 수 있음 — 평소 로그인에 쓰는 인증 앱 코드를 입력. 화면을 실수로 닫았으면 다시 Reset Token — 새로 발급하면 이전 것은 자동 폐기된다).
+      🔑 토큰 = 봇의 비밀번호다. 채팅·메모장·스크린샷 어디에도 남기지 않는다. 화면 공유·녹화 중이면 여기서 잠시 멈췄다 아래 저장 → 잠금 → 확인까지 끝낸 뒤 재개한다.
+      (서버 접속이 끊겨 있으면 ssh root@<서버 IP> 로 먼저 재접속) mkdir -p /opt/bot && nano /opt/bot/.env
+      열린 편집기에 DISCORD_TOKEN=발급받은토큰 한 줄을 입력한다(등호 앞뒤 공백 없이). Ctrl+O → 엔터(저장, 파일명 확인에도 엔터 필요) → Ctrl+X(닫기).
+      chmod 600 /opt/bot/.env
+    observation: |
+      grep -c '^ *DISCORD_TOKEN *=' /opt/bot/.env
+      ls -l /opt/bot/.env
+    expected: |
+      grep -c 결과 = 1 (토큰 값 자체는 화면에 안 보인다 — 일부러 값이 안 보이는 방법으로 확인한다). ls -l 권한 = -rw-------
+    mismatch: |
+      grep -c 가 0 이면: 그 줄이 아예 없거나 변수명 오타다 — **즉시 Reset Token 하지 말고** 먼저 nano /opt/bot/.env 로 열어 눈으로 확인한다(이 봇 코드는 등호 앞뒤 공백을 스스로 정리하므로 공백만으로는 안 죽는다). 줄이 틀렸으면 고쳐 저장하면 끝.
+      grep 이 "No such file or directory" 라고 하면 0 이 아니라 **파일 자체가 없는 것** — b1 저장 단계부터 다시 한다.
+      봇이 "Improper token" 으로 죽는 실제 원인 = 값이 비었거나 토큰이 무효(만료·복사 누락)일 때다 — 이때만 개발자 포털 Reset Token 으로 새 토큰을 받아 다시 저장한다.
+      nano 에서 저장이 안 되면: Ctrl+O(저장) 후 파일명 확인에 엔터를 눌러야 저장된다. 그 다음 Ctrl+X 로 나온다.
+    verified: measured
+    source: 가이드 STEP 4 + STEP 9 트러블슈팅 + 2026-08-19 루돌프 라이브 VPS 실측 정정(bot.py 공백 내성 4/4·grep 사각 2케이스·파일 부재 exit 2)
+
+  - id: b2
+    title: 봇을 서버에 초대 — OAuth2 URL Generator
+    action: |
+      개발자 포털 왼쪽 OAuth2 → URL Generator. scopes(권한 범위)에서 bot 체크(이 앱을 봇으로 서버에 넣겠다는 뜻). 아래 BOT PERMISSIONS 목록에서 세 개만 체크한다: View Channels(채널 보기) · Send Messages(메시지 보내기) · Read Message History(지난 메시지 읽기 — 봇이 메시지에 「답장」을 달 때 필요).
+      화면 맨 아래 생성된 URL 을 복사해 브라우저 주소창에 붙여넣기 → 초대할 디스코드 서버 선택 → 승인.
+    observation: |
+      UI 확인: 디스코드 서버 멤버 목록에서 봇 확인
+    expected: |
+      멤버 목록에 봇이 나타난다. 아직 회색(오프라인)인 게 정상 — 봇 프로그램을 아직 안 돌렸기 때문. 위 3권한이면 기본 동작에 충분하다.
+    mismatch: |
+      가이드에 별도 명시된 트러블슈팅 없음.
+    verified: measured
+    source: 가이드 STEP 5
+
+  - id: b3
+    title: 봇 코드 작성 — bot.py + requirements.txt(파일 3개 완성)
+    action: |
+      아래 heredoc 명령으로 /opt/bot/bot.py 를 생성한다(전문 = 본 스킬 assets/bot.py — 코파일럿이 그 파일을 읽어 이 자리에 채워 사용자에게 제시한다. 코드 로직은 가이드 STEP 6-1 원문과 동일하고, 출처 맥락 주석 1줄만 범용 표현으로 바뀌었다):
+      cat > /opt/bot/bot.py <<'PY'
+      <assets/bot.py 전문>
+      PY
+      부품 목록(requirements.txt, 한 줄)도 만든다:
+      echo 'discord.py>=2.3,<3' > /opt/bot/requirements.txt
+    observation: |
+      python3 -m py_compile /opt/bot/bot.py && echo 통과
+    expected: |
+      통과
+    mismatch: |
+      SyntaxError 가 나오면 붙여넣기가 중간에 잘린 것 — 상자 전체를 다시 복사해서 한 번 더.
+    verified: measured
+    source: 가이드 STEP 6-1 + STEP 6-2
+
+  - id: b4
+    title: 부품 설치 — venv + pip install
+    action: |
+      python3 -m venv /opt/bot/venv && /opt/bot/venv/bin/pip install -r /opt/bot/requirements.txt
+    observation: |
+      설치 로그 마지막 줄 확인
+    expected: |
+      마지막 줄에 "Successfully installed" 와 "discord.py-2..." 가 보인다. 1–2분 걸린다.
+    mismatch: |
+      가이드에 별도 명시된 트러블슈팅 없음.
+    verified: measured
+    source: 가이드 STEP 6-3
+
+  - id: b5
+    title: 실행 + 24시간 상시화 — tmux
+    action: |
+      tmux new -s mini-bot
+      화면이 바뀌고 초록 띠가 생기면(방 안에 들어온 것) 그 안에서 봇을 켠다: /opt/bot/venv/bin/python /opt/bot/bot.py
+      "봇 로그인 성공: <봇이름>" 이 찍히고 디스코드 멤버 목록의 봇이 초록불(온라인)로 바뀌는 걸 확인했으면, Ctrl+b 를 눌렀다 뗀 다음 d 를 누른다(동시에 누르는 게 아니라 누르고 뗀 다음) — 방에서 나만 나오고 봇은 방 안에서 계속 돈다.
+    observation: |
+      tmux ls
+      디스코드 채팅창에서 @봇이름 핑
+      ssh 를 끊고(exit) 다시 말을 걸어본다
+    expected: |
+      tmux ls → "mini-bot: 1 windows ..." 가 보인다. @봇이름 핑 → "pong — VPS 서버에서 응답했습니다 🛰️" 회신이 온다. ssh 를 끊어도(터미널을 꺼도) 다시 말을 걸면 여전히 대답한다 — 이게 서버에 올린 이유의 전부다.
+    mismatch: |
+      봇이 계속 회색(오프라인)이면: ① tmux attach -t mini-bot 으로 방 안에서 봇 실행 시 에러가 났는지 확인 ② .env 의 토큰 줄에 오타·공백이 없는지 확인 ③ 토큰을 다시 발급받았다면 파일도 새 값으로 바꿔야 한다.
+      tmux ls 가 "no server running" 이라고 하면 방이 하나도 없다는 뜻(서버가 재부팅됐거나 방을 만든 적이 없는 상태) — tmux new -s mini-bot 부터 다시 한다.
+      봇을 켜자마자 "Improper token" 이라며 죽으면 토큰이 잘못 들어간 것 — Ctrl+C 로 멈추고 b1(토큰 저장)을 다시 한다.
+      @봇이름 검색 ... 이 「검색 실패」라고 뜨는 건 정상이다 — 「검색」 명령은 서버 안에 별도 검색 API 가 있어야 동작한다. 봇 설치가 잘 됐는지는 「핑」으로 확인하면 충분하다. (강사 시연 참고: 검색 API 가 이미 있는 서버에서는 「검색」이 성공해 이 설명과 반대 화면이 나올 수 있다 — 본 서술은 학생의 새 VPS 기준.) 서버가 재부팅되면 tmux 방도 사라진다 — 그때는 본 단계를 다시 하면 된다(재부팅에도 자동으로 켜지는 systemd 등록은 본 매니페스트 범위 밖).
+    verified: measured
+    source: 가이드 STEP 7 + STEP 9 트러블슈팅
+
+  - id: b6
+    title: 응용 — 내가 만든 봇 올리기(scp)
+    action: |
+      바뀌는 건 「어떤 파일을 넣느냐」뿐, 다섯 걸음(폴더 → 파일 → 부품 → 토큰 → tmux 방)은 동일하다.
+      내 봇 파일들을 서버의 새 폴더로 보낸다 — 방법은 둘 중 하나: (A) 붙여넣기 길(파일이 몇 개 안 될 때) — 먼저 mkdir -p /opt/mybot 으로 폴더를 만들고 b3 처럼 파일마다 붙여넣기. (B) 폴더째 보내는 길 — 이때는 폴더를 미리 만들지 않는다. 내 컴퓨터 터미널에서: scp -r 내봇폴더 root@<서버 IP>:/opt/mybot
+      내 봇의 부품 목록(requirements.txt)이 있으면 b4 와 같은 방법으로 설치한다(venv 경로만 /opt/mybot/venv). 토큰 파일도 그 봇 폴더에 따로 둔다 — /opt/mybot/.env 에 새 봇의 토큰을(권한 600 잠금까지 b1 과 동일). tmux 방도 따로 켠다 — tmux new -s mybot 안에서 실행(방 이름만 다르면 봇 여러 개가 한 서버에서 같이 돈다).
+    observation: |
+      ls /opt/mybot
+      tmux ls
+    expected: |
+      ls /opt/mybot 에 내 봇 파일들이 바로 보인다(폴더 이름이 한 층 더 보이면 아래 mismatch 의 중첩 상태). 실행 후 tmux ls 에 "mybot: 1 windows ..." 가 나오고 디스코드에서 내 봇이 온라인이면 끝.
+    mismatch: |
+      ⚠️ /opt/mybot 을 미리 만들어 두고 scp -r 로 보내면 그 안에 한 층 더 들어가(/opt/mybot/내봇폴더) 아래 경로가 전부 어긋난다 — 폴더째 보낼 땐 mkdir 를 건너뛰는 게 규칙이다(scp 는 도착지에 /opt/mybot 이 없으면 내 폴더가 그 이름으로 복사된다). 중첩됐으면 옮겨 꺼내거나 지우고 다시 보낸다.
+    verified: measured
+    source: 가이드 STEP 8

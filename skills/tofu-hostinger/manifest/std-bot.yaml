@@ -1,0 +1,176 @@
+# std-bot.yaml — 「표준 디스코드 봇을 VPS 에 올리기」 루트 (정본)
+# (이 봇 = ThisCode·ThisCodex 배포판이 쓰는 것과 같은 표준 구성. cc.yaml c3 의 ThisCode «번들» 설치와는 별개 — 이 루트는 번들을 설치하지 않는다)
+#
+# 📍 이 파일이 정본이다. 초안 원본 = AI_Second_Brain/100-project/2026-08-19-tofu-hostinger-skill-build/
+#    std-bot-route-draft.yaml (작업 기록용 보존 — 내용 갱신은 여기서 하고, 그쪽은 초안 시점 그대로 둔다)
+#
+# 출처: 2026-08-19~20 루돌프 라이브 VPS 실측 (Ubuntu 24.04 · Hostinger KVM)
+#   발주: 재경님 → 카파시 relay. 「설치뿐 아니라 간단한 소통까지 되게」
+#   전제: bot.yaml b1~b5(수업용 미니 봇)와 cc.yaml c1~c2 는 이미 끝난 상태에서 이어붙임.
+#   ⚠️ 모든 expected/mismatch 는 실측 문구다. 추정으로 쓴 줄은 없다.
+#   ✅ 전 스텝 measured. 마지막까지 열려 있던 「사람 계정 → 표준 봇」 발신 축도 2026-08-20 01:43 KST 닫혔다:
+#      사람 계정 멘션 `@probe-bot 안녕?` → 2.5초 후 `안녕하세요! 필요한 작업 있으시면 말씀해 주세요.`
+#      = «대화형» 응답(정해진 명령어 아님) → 미니 봇이 아니라 표준 봇이 답한 것까지 같이 갈렸다.
+
+route: std-bot
+steps:
+  - id: s1
+    title: 실행기 설치 — bun (+ unzip 선결)
+    action: |
+      apt install -y unzip
+      curl -fsSL https://bun.sh/install | bash
+      export PATH="$HOME/.bun/bin:$PATH"
+      echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.bashrc
+    observation: |
+      bun --version
+    expected: |
+      1.3.x 이상이 찍힌다.
+    mismatch: |
+      unzip 없이 bun 설치기를 돌리면 `error: unzip is required to install bun` 으로 죽는다 — 설치기 자체의 선결 조건이다(실측).
+      ⚠️ bun 이 없으면 다음 단계가 «죽지 않고 조용히 안 붙는다» — 프로세스는 살아 있고 화면도 정상이라 「봇이 꺼졌다」와 구별이 안 된다. 이 단계를 건너뛴 채 뒤로 가지 말 것.
+    verified: measured
+
+  - id: s2
+    title: 플러그인 저장소 등록 + discord 플러그인 설치
+    action: |
+      claude plugin marketplace add anthropics/claude-plugins-official
+      claude plugin install discord@claude-plugins-official
+      claude plugin install superpowers@claude-plugins-official   # 선택
+    observation: |
+      claude plugin list
+    expected: |
+      ❯ discord@claude-plugins-official
+        Version: 0.0.4 (2026-08-20 관측 — 이후 버전 오르면 숫자만 다르고 정상)
+        Status: ✔ enabled
+    mismatch: |
+      marketplace 등록을 건너뛰면 plugin install 이 실패한다 — cc.yaml c3 의 superpowers optional fail(rc=2) 이 정확히 이 사유였고, 등록 한 줄로 해소된다(실측).
+    verified: measured
+
+  - id: s3
+    title: 토큰 배치 — DISCORD_BOT_TOKEN (변수명 주의)
+    action: |
+      mkdir -p ~/.claude/channels/discord && chmod 700 ~/.claude/channels/discord
+      nano ~/.claude/channels/discord/.env      # DISCORD_BOT_TOKEN=... 한 줄
+      chmod 600 ~/.claude/channels/discord/.env
+    observation: |
+      grep -c '^ *DISCORD_BOT_TOKEN *=' ~/.claude/channels/discord/.env
+      ls -l ~/.claude/channels/discord/.env
+    expected: |
+      1 / -rw-------
+    mismatch: |
+      🔴 수업용 미니 봇은 `DISCORD_TOKEN`, 표준 봇은 `DISCORD_BOT_TOKEN` 이다 — 이름이 어긋나면 «무징후로 연결만» 안 된다.
+      MCP 서버 stderr 원문: `discord channel: DISCORD_BOT_TOKEN required / set in ~/.claude/channels/discord/.env`
+      🔴 경로도 주의: 표준 봇은 DISCORD_STATE_DIR 보다 «기본 경로 ~/.claude/channels/discord/» 를 본다.
+         (다봇 운영으로 discord-<이름>/ 을 쓰면 /discord:access 가 그 폴더를 "leftover, unused" 로 판정한다 — 단일봇 기준으로 안내할 것)
+    verified: measured
+
+  - id: s4
+    title: 첫 실행 온보딩 통과 (자동화 시)
+    action: |
+      대화형으로 한 번 실행해 테마 → 폴더 신뢰 → 렌더러 3~4단 마법사를 통과시킨다. (단 「폴더 신뢰」 질문만은 저장되지 않아 매 기동 다시 뜬다 — 아래 s5 실기동 참고)
+      스크립트로 자동화할 경우 ~/.claude.json 에 아래 3키를 넣으면 마법사를 건너뛴다:
+        hasCompletedOnboarding=true · lastOnboardingVersion="<CLI 버전>" · theme="dark"
+    observation: |
+      claude auth status
+    expected: |
+      loggedIn: true / authMethod: claude.ai
+    mismatch: |
+      `claude -p` 는 되는데 대화형 첫 실행만 마법사가 뜬다 — 비대화 호출은 온보딩을 안 거치므로 완료 플래그가 안 생긴다(실측).
+      인증 화면에서 `Invalid code.` 가 뜬 뒤 `Login successful.` 이 이어지는 경우가 있다 — 화면 문구로 판정하지 말고 `claude auth status` 나 실제 호출로 판정할 것.
+    verified: measured
+
+  - id: s5
+    title: 봇 기동 — tmux + --channels
+    action: |
+      tmux new -s bot
+      claude --channels plugin:discord@claude-plugins-official
+      (Ctrl+b, d 로 분리)
+    observation: |
+      pgrep -af "bun run --cwd.*discord"
+      tail -n 5 ~/.cache/claude-cli-nodejs/-root/mcp-logs-plugin-discord-discord/$(ls -t ~/.cache/claude-cli-nodejs/-root/mcp-logs-plugin-discord-discord | head -1)
+    expected: |
+      bun 프로세스가 «상주»한다 — 1건 이상 = 정상(띄운 세션 수만큼) · 봇이 안 붙는데 2건 이상이면 옛 세션 잔존(A5) 의심. 로그 마지막에 `Successfully connected` + `Channel notifications registered`.
+    mismatch: |
+      🔴 `--dangerously-skip-permissions` 는 root 계정에서 거부된다 — `cannot be used with root/sudo privileges for security reasons` 로 즉시 종료.
+         VPS 기본 계정이 root 이므로 개인 PC 의 기동줄을 그대로 복사하면 뜨지 않는다.
+         ⚠️ 이 축은 앞뒤 함정들과 성격이 다르다 — «즉시 죽고 이유도 말해준다». 무징후 항목들의 대조군으로 쓸 것.
+      ✅ 그냥 대화 용도면 그 플래그 «없이» 띄우면 된다. 문제는 «켜야 할 때»인데, 경로가 따로 있다:
+         ✅ 정석: 비-root 사용자를 새로 만들어 그 계정으로 켜는 것 — 이게 우선 권장 경로다.
+         🔴 위험 고지: 아래 조합(`IS_SANDBOX=1` + `--dangerously-skip-permissions`)은 인터넷에 열린 서버의 root 에서 안전장치(권한 확인)를 끄는 것이다. 그냥 대화 용도면 이 옵션 없이 띄우면 된다.
+         ❌ `--permission-mode bypassPermissions` 도 root 에서 «똑같이 거부»된다 — 대안으로 시도했다가 확인한 음성 실측.
+            (이 줄이 없으면 다음 사람이 이 대안을 또 시도한다)
+         ✅ 통과 경로(꼭 root 에서 켜야 할 때): `IS_SANDBOX=1 claude --dangerously-skip-permissions -p "say B_OK"` → `B_OK`, exit 0
+         ✅ 실기동: `tmux new -d -s bot '… IS_SANDBOX=1 claude --dangerously-skip-permissions --channels plugin:discord@claude-plugins-official'`
+            → 폴더 신뢰 동의 대화상자 통과 → `⏵⏵ bypass permissions on` 표시 + bun 상주 1건.
+            🔴 이 대화상자는 «매 기동마다» 다시 뜬다 — 신뢰 승인이 저장되지 않는다(실측 3/3, ~/.claude.json 에 항목이 있어도). 스크립트·alias 기동은 여기서 에러 없이 조용히 멈추므로, 자동화는 「trust this folder」 감지 → `1` Enter 를 넣어야 한다.
+      🔴 기동 «시점»에 토큰·bun 이 준비돼 있어야 한다. 먼저 실패한 세션은 그 상태를 물고 있어서, 뒤늦게 고쳐도 그 세션에서는 안 붙는다 — 조건을 갖춘 뒤 «세션을 새로 띄울 것»(실측: 동일 조건에서 재기동 후 상주 성공).
+      bun 프로세스가 0건이면 s1(bun) 또는 s3(토큰)으로 돌아간다.
+    verified: measured
+
+  - id: s6
+    title: 접근 허용 — 이걸 안 하면 봇은 «완전 침묵»한다
+    action: |
+      (Claude 세션 안 — 슬래시 커맨드)
+      /discord:access                                   # 현재 상태 확인
+      /discord:access allow <내 디스코드 user_id>        # DM 허용
+      /discord:access group add <채널 id>                # 서버 채널 허용(기본 = 멘션 필요)
+    observation: |
+      (셸에서)
+      cat ~/.claude/channels/discord/access.json
+    expected: |
+      {"dmPolicy":"pairing","allowFrom":["<user_id>"],"groups":{"<channel_id>":{"requireMention":true,"allowFrom":[]}},"pending":{}}
+    mismatch: |
+      🔴 허용 목록이 비어 있으면 봇 자신이 이렇게 보고한다: `Nothing can currently reach you: the allowlist is empty and no pairings are pending.`
+         멘션해도 «아무 반응이 없고 로그도 안 남는다» → 수강생이 「봇이 죽었다」로 오진하는 자리 1순위.
+         수업용 미니 봇에는 접근 제어가 없어 아무 멘션에나 답하므로, 미니 → 표준 전환에서 체감 차이가 가장 큰 지점이다.
+      채널 허용 시 그 채널 allowFrom 이 비면 «그 채널 멤버 누구나» 멘션으로 닿는다 — 좁히려면 `--allow <id1>,<id2>`, 멘션 없이 받으려면 `--no-mention`.
+      access.json 최초 생성 시 파일 쓰기 권한 대화상자가 뜬다(자동화하면 이 프롬프트에 키가 먹혀 다음 명령이 유실될 수 있음 — 한 번에 하나씩).
+    verified: measured
+
+  - id: s7
+    title: 왕복 확인
+    action: |
+      허용한 채널에서 `@봇이름 안녕?` 또는 DM 으로 말을 건다.
+    observation: |
+      봇 응답 / ~/.claude/channels/discord/inbox
+    expected: |
+      대화형 응답이 온다(미니 봇과 달리 정해진 명령어가 없다).
+    mismatch: |
+      🔴 선행 ①: 봇 계정으로 말을 걸 거라면 ThisCode J-2 패치(`patch-discord-bot-drop.sh`)가 필요한데,
+         패치는 «실제로 도는 사본»에 걸어야 한다 — `~/.claude/plugins/cache/claude-plugins-official/discord/0.0.4/server.ts`.
+         `marketplaces/…` 쪽에 걸면 「패치했는데 그대로」가 된다. `PATCH_TARGET=` 로 지정할 것.
+         ⚠️ 이건 s5 의 「실패한 세션」과 «같은 골격»이다 — 고친 자리와 실제로 실행되는 자리가 다른 것.
+      🔴 선행 ②: 길드(서버) 소속 ≠ 채널 접근. 봇을 «그 채널에 초대»해야 수신한다.
+         s6 에서 허용 목록을 열어도 채널 초대가 없으면 여전히 조용하다.
+      ℹ️ 축이 둘이라는 점은 기억할 것 — «봇 계정 발신»(J-2 패치 필요)과 «사람 계정 발신»(패치 무관)은 다른 경로다.
+         둘 다 실측 통과했지만, 학습자가 봇으로 시험하다 막히면 위 선행 ①을 먼저 의심하게 안내하라.
+    verified: measured   # 두 축 모두 실측: 봇 계정(2026-08-20 루돌프) + 사람 계정(2026-08-20 01:43 KST)
+
+# ── 강의 함정 층 요약 ────────────────────────────────────────────────
+#
+# 진단 원칙 1줄: **이 루트의 고장은 대부분 «죽지 않고 조용히 안 되는» 종류다.**
+#   그래서 「에러가 안 났으니 잘 된 것」이 여기서는 성립하지 않는다.
+#   수강생이 「봇이 죽었다」고 오진하는 자리가 전부 이 묶음 안에 있다.
+#
+# ■ A군 — 무징후(조용히 안 붙는다). 프로세스는 살아 있고 화면도 정상이다. [6종]
+#   A1. bun 없음          → 플러그인 실행기 부재. 죽지 않는다
+#   A2. 변수명/경로 어긋남 → `DISCORD_TOKEN`(미니) ≠ `DISCORD_BOT_TOKEN`(표준), 기본 경로 `~/.claude/channels/discord/`
+#   A3. 허용 목록 빈값     → 완전 침묵. 「봇이 죽었다」 오진 1순위
+#   A4. 채널 미초대        → 길드 소속 ≠ 채널 접근. 허용 목록을 열어도 조용하다
+#   A5. 실패한 세션        → 조건을 고쳐도 «그 세션»은 안 붙는다. 세션 재기동 필요
+#   A6. 패치를 엉뚱한 층에 → 실행되는 사본이 아니라 marketplaces 사본에 걸면 「패치했는데 그대로」
+#
+#   ⚠️ A5·A6 이 제일 악질이다. A1~A4 는 «안 고쳤으니 안 되는» 것이라 고치면 풀리는데,
+#      A5·A6 은 «고친 뒤에도 그대로»라 수강생이 자기 수리를 의심하게 만든다.
+#      공통 진단 질문 = 「내가 고친 자리가, 실제로 실행되는 자리인가?」
+#
+# ■ B군 — 대조군(즉시 죽고 이유도 말해준다). A군을 설명하기 위한 반례로 쓴다. [1종]
+#   B1. root 계정         → 표준 기동줄이 즉시 거부 + 사유 출력
+#                           「이건 이렇게 알려준다. 그런데 A군 여섯은 안 알려준다」 로 대비시킬 것
+#                           (루돌프 지적 2026-08-20 — 한 원칙으로 뭉뚱그리면 A군의 성격이 흐려진다)
+#
+# ■ C군 — 자동화 전용(사람이 하면 안 보인다). [2종]
+#   C1. 온보딩 마법사     → 대화형 첫 실행만 뜬다. `claude -p` 는 통과하므로 스크립트에서만 멈춘다
+#   C2. 폴더 신뢰 질문     → 매 기동 다시 뜬다(저장 안 됨, 실측 3/3). 손은 1 누르면 끝, 스크립트는 여기서 조용히 멈춘다
+#
+# 총 9종 (A6 + B1 + C2). 원장 계수 = 수리 대장 17건과는 별개 축이다(대장 = 문면 어긋남·수리 항목).

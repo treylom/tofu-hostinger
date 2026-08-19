@@ -1,0 +1,22 @@
+{
+    "name": "tofu-hostinger",
+    "description": "tofu-hostinger 마켓플레이스 — VPS 설치 코파일럿(:vps·:cc·:bot·:std-bot)",
+    "owner": {
+        "name": "tofukyung",
+        "url": "https://github.com/treylom"
+    },
+    "plugins": [
+        {
+            "name": "tofu-hostinger",
+            "description": "Hostinger VPS 에 Claude Code 봇을 올리는 단계별 설치 코파일럿 — 실측 기반 함정 안내 포함",
+            "source": ".",
+            "category": "productivity",
+            "tags": [
+                "vps",
+                "hostinger",
+                "discord-bot",
+                "claude-code"
+            ]
+        }
+    ]
+}

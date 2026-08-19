@@ -1,0 +1,46 @@
+route: vps
+steps:
+  - id: v1
+    title: 서버 구입 — VPS 구매(Hostinger KVM 플랜 · Ubuntu 24.04)
+    action: |
+      Hostinger 사이트에서 VPS 메뉴로 들어가 KVM 플랜을 고른다. 봇 여러 개를 올려도 넉넉한 급은 KVM 2(2 vCPU · 8GB 메모리 · 100GB 저장공간), 봇 하나만 돌린다면 그 아래 급(KVM 1)도 된다.
+      기간을 고르고 결제한다(카트 화면의 할인 코드 칸이 쿠폰을 넣는 자리).
+      결제 후 서버 생성 단계에서 운영체제로 Ubuntu 24.04 LTS 를 선택한다.
+      이 과정 중 root 비밀번호(서버 관리자 비밀번호) 설정을 요구하면 길고 복잡하게 만들어 비밀번호 관리자에 저장해 둔다 — 다음 단계에서 바로 쓴다.
+    observation: |
+      UI 확인: 관리 화면(hPanel)에서 서버 상태와 IP 주소 확인
+    expected: |
+      서버 상태 = Running, IP 주소(예: 203.0.113.10 같은 숫자 네 덩이)가 표시된다. 서버 생성 직후 1–2분은 부팅 중이라 접속이 안 될 수 있다(정상).
+    mismatch: |
+      저가 「Business」 상품은 VPS 가 아니라 「공유 호스팅」이라는 다른 상품이다 — 공유 호스팅으로는 봇을 못 돌린다. 반드시 VPS 메뉴 → KVM 플랜으로 들어가야 한다.
+    verified: measured
+    source: 가이드 STEP 1
+
+  - id: v2
+    title: 서버에 들어가기 — SSH 접속
+    action: |
+      터미널(맥) 또는 PowerShell(윈도우)을 열고 아래에서 <서버 IP> 만 바꿔 실행: ssh root@<서버 IP>
+      처음 접속하면 "Are you sure you want to continue connecting?" 라고 물으면 yes 입력. root 비밀번호를 입력한다(입력해도 화면에 아무것도 안 보이는 게 정상 — 그대로 치고 엔터).
+      ▸ 선택(권장) — 비밀번호 없이 접속하려면 SSH 키를 쓴다: ① ssh-keygen -t ed25519 (질문은 전부 엔터로 넘겨도 됨) ② 공개키를 클립보드로 복사 — 맥: cat ~/.ssh/id_ed25519.pub | pbcopy / 윈도우 PowerShell: Get-Content ~/.ssh/id_ed25519.pub | Set-Clipboard — 그 값을 hPanel → 내 VPS → Settings → SSH keys → Add SSH key 에 붙여넣고 저장(또는 서버의 ~/.ssh/authorized_keys 에 그 한 줄을 붙여넣기). 비밀키(id_ed25519)는 만든 컴퓨터 밖으로 옮기지 않는다 — 서버·채팅·메일 어디로도.
+    observation: |
+      프롬프트 모양 확인
+    expected: |
+      프롬프트가 root@내서버이름:~# 모양으로 바뀐다. 이후 명령은 서버에서 실행된다.
+    mismatch: |
+      ssh 가 "Connection refused / timed out" 이면: ① IP 를 다시 확인(대시보드 값과 한 글자라도 다르면 실패) ② 서버가 Running 상태인지 확인 ③ 방금 만든 서버면 1–2분 기다렸다 재시도.
+      SSH 키로 접속하는데 "Permission denied (publickey)" 가 뜨면: 등록한 공개키와 내 컴퓨터의 비밀키가 짝이 아닌 경우가 대부분 — cat ~/.ssh/id_ed25519.pub 로 나온 한 줄이 hPanel(또는 서버의 authorized_keys)에 등록된 값과 완전히 같은지 대조. 급하면 root 비밀번호 접속으로 먼저 들어가도 된다.
+    verified: measured
+    source: 가이드 STEP 2 + STEP 9 트러블슈팅
+
+  - id: v3
+    title: 기본 도구 설치 — git · tmux · curl · python3.12-venv
+    action: |
+      apt update && apt install -y git tmux curl python3.12-venv
+    observation: |
+      설치 로그 확인 후 프롬프트 복귀 여부 확인
+    expected: |
+      설치 로그가 흐른 뒤 프롬프트로 돌아온다. 일부 항목이 "already the newest version" 이라고 나와도 정상(이미 설치돼 있다는 뜻).
+    mismatch: |
+      가이드에 별도 명시된 트러블슈팅 없음.
+    verified: measured
+    source: 가이드 STEP 3
