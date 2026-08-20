@@ -4,7 +4,7 @@ Hostinger VPS 에 서버를 만들고, Claude Code 를 깔고, Discord 봇을 24
 
 - 4개 루트: `:vps`(서버 만들기) · `:cc`(Claude Code 설치) · `:bot`(수업용 미니 봇) · `:std-bot`(표준 봇 상시 운영)
 - 전 단계 = 라이브 VPS 실측 기반. 「조용히 안 되는」 함정 목록 동봉
-- 시작: 설치하면 슬래시 명령이 아니라 「스킬」로 뜬다. 새 Claude Code 세션에서 「서버에 봇 올리고 싶어」처럼 말하면 `tofu-hostinger` 스킬이 자동으로 제안된다(정식 이름 `tofu-hostinger:tofu-hostinger`). 전체 안내부터 보려면 「`:help`부터 보여줘」라고 하면 된다. (`/` 슬래시로는 안 뜬다. `:help`·`:vps` 같은 이름도 직접 치는 명령이 아니라, 위처럼 말로 부르는 안내 라벨이다.)
+- 시작: 설치하면 두 가지로 쓸 수 있다 — ① 슬래시로 세부까지: `/tofu-hostinger:help`(전체 통독)·`/tofu-hostinger:vps`·`/tofu-hostinger:cc`·`/tofu-hostinger:bot`·`/tofu-hostinger:std-bot`. ② 또는 새 세션에서 「서버에 봇 올리고 싶어」처럼 말해도 된다(스킬 `tofu-hostinger:tofu-hostinger` 가 알아서 라우팅). 둘 다 같은 안내로 이어진다.
 
 ## 설치
 
